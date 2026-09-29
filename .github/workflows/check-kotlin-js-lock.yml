@@ -1,0 +1,59 @@
+name: Check Kotlin JS lockfile
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "**/*.gradle"
+      - "**/*.gradle.kts"
+
+permissions:
+  contents: read
+
+jobs:
+  refresh-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Check whether an npm declaration changed
+        id: npm-change
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --unified=0 "$BASE" "$HEAD" -- '*.gradle' '*.gradle.kts' | grep -Eq '^[+-][^+-].*npm\('; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Regenerate the Kotlin JS lockfile
+        if: steps.npm-change.outputs.changed == 'true'
+        run: ./gradlew --no-daemon kotlinUpgradeYarnLock
+
+      - name: Create lockfile patch
+        if: steps.npm-change.outputs.changed == 'true'
+        run: git diff --binary -- kotlin-js-store/yarn.lock > kotlin-js-store-yarn-lock.patch
+
+      - name: Upload the updated lockfile patch
+        if: steps.npm-change.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotlin-js-store-yarn-lock
+          path: kotlin-js-store-yarn-lock.patch
+
+      - name: Require the updated lockfile in this PR
+        if: steps.npm-change.outputs.changed == 'true'
+        run: |
+          test ! -s kotlin-js-store-yarn-lock.patch || {
+            echo "kotlin-js-store/yarn.lock needs updating. Download the workflow artifact or run ./gradlew kotlinUpgradeYarnLock locally."
+            exit 1
+          }
