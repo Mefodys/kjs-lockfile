@@ -1,4 +1,4 @@
-name: Check Kotlin JS lockfile
+name: Update Kotlin JS lockfile
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ on:
       - "**/*.gradle.kts"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   refresh-lockfile:
@@ -17,6 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - uses: actions/setup-java@v4
         with:
@@ -39,21 +40,14 @@ jobs:
         if: steps.npm-change.outputs.changed == 'true'
         run: ./gradlew --no-daemon kotlinUpgradeYarnLock
 
-      - name: Create lockfile patch
-        if: steps.npm-change.outputs.changed == 'true'
-        run: git diff --binary -- kotlin-js-store/yarn.lock > kotlin-js-store-yarn-lock.patch
-
-      - name: Upload the updated lockfile patch
-        if: steps.npm-change.outputs.changed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: kotlin-js-store-yarn-lock
-          path: kotlin-js-store-yarn-lock.patch
-
-      - name: Require the updated lockfile in this PR
-        if: steps.npm-change.outputs.changed == 'true'
+      - name: Commit the updated lockfile
+        if: steps.npm-change.outputs.changed == 'true' && github.event.pull_request.head.repo.full_name == github.repository
         run: |
-          test ! -s kotlin-js-store-yarn-lock.patch || {
-            echo "kotlin-js-store/yarn.lock needs updating. Download the workflow artifact or run ./gradlew kotlinUpgradeYarnLock locally."
-            exit 1
-          }
+          if git diff --quiet -- kotlin-js-store/yarn.lock; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add kotlin-js-store/yarn.lock
+          git commit -m "Update Kotlin JS yarn lockfile"
+          git push
