@@ -14,7 +14,7 @@ kotlin {
 
     sourceSets {
         jsMain.dependencies {
-            implementation(npm("nanoid", "5.1.5"))
+            implementation(npm("nanoid", "5.1.6"))
         }
     }
 }
